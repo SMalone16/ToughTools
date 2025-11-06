@@ -1,7 +1,5 @@
 package com.smalone.toughwoodtools;
 
-import java.util.HashSet;
-import java.util.Set;
 import java.util.UUID;
 
 import org.bukkit.Material;
@@ -14,7 +12,6 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockDamageEvent;
 import org.bukkit.event.inventory.CraftItemEvent;
 import org.bukkit.event.player.PlayerItemDamageEvent;
-import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -83,13 +80,11 @@ public class ToughTools extends JavaPlugin implements Listener {
         item.setDurability((short) 0);
         meta.setUnbreakable(true);
 
-        clearExistingAttributeModifiers(meta);
-
         // grant maximum combat potential to the holder
         meta.addAttributeModifier(Attribute.GENERIC_ATTACK_DAMAGE,
-                new AttributeModifier(DAMAGE_ID, "toughtools-damage", 100.0, Operation.ADD_NUMBER, EquipmentSlot.HAND));
+                new AttributeModifier(DAMAGE_ID, "toughtools-damage", 100.0, Operation.ADD_NUMBER));
         meta.addAttributeModifier(Attribute.GENERIC_ATTACK_SPEED,
-                new AttributeModifier(SPEED_ID, "toughtools-speed", 10.0, Operation.ADD_NUMBER, EquipmentSlot.HAND));
+                new AttributeModifier(SPEED_ID, "toughtools-speed", 10.0, Operation.ADD_NUMBER));
 
         // give the tools extreme efficiency-like behaviour when used for mining
         item.setItemMeta(meta);
@@ -97,15 +92,6 @@ public class ToughTools extends JavaPlugin implements Listener {
         // cap their enchantments to the highest vanilla levels so existing items stay powerful
         item.addUnsafeEnchantment(Enchantment.DIG_SPEED, 10);
         item.addUnsafeEnchantment(Enchantment.DURABILITY, 10);
-    }
-
-    private void clearExistingAttributeModifiers(ItemMeta meta) {
-        if (meta.getAttributeModifiers() == null) {
-            return;
-        }
-
-        Set<Attribute> attributes = new HashSet<>(meta.getAttributeModifiers().keySet());
-        attributes.forEach(meta::removeAttributeModifier);
     }
 
     private static final UUID DAMAGE_ID = UUID.fromString("77763ca6-4df5-4b0b-8a6c-f78b7d0f5126");
