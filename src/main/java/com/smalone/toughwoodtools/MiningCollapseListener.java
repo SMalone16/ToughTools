@@ -1,8 +1,6 @@
 package com.smalone.toughwoodtools;
 
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -10,7 +8,6 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
-import org.bukkit.block.BlockState;
 import org.bukkit.entity.FallingBlock;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -25,14 +22,10 @@ public class MiningCollapseListener implements Listener {
 
     private final ToughTools plugin;
     private final Map<String, Long> cooldowns = new HashMap<String, Long>();
-    private final int collapseHeight;
-    private final long restoreDelayTicks;
     private final long cooldownMillis;
 
     public MiningCollapseListener(ToughTools plugin) {
         this.plugin = plugin;
-        this.collapseHeight = plugin.getConfig().getInt("collapse-height", 6);
-        this.restoreDelayTicks = plugin.getConfig().getLong("collapse-restore-delay", 200L);
         this.cooldownMillis = plugin.getConfig().getLong("collapse-cooldown-ms", 2000L);
     }
 
@@ -78,23 +71,25 @@ public class MiningCollapseListener implements Listener {
 
     private void triggerCollapse(Block origin) {
         World world = origin.getWorld();
-        List<BlockState> toRestore = new ArrayList<BlockState>();
-
         for (int dx = -1; dx <= 1; dx++) {
             for (int dz = -1; dz <= 1; dz++) {
-                for (int dy = 0; dy < collapseHeight; dy++) {
+                int airStreak = 0;
+                for (int dy = 0; dy < world.getMaxHeight(); dy++) {
                     Block target = origin.getRelative(dx, dy, dz);
+                    Material type = target.getType();
+                    if (type == Material.AIR) {
+                        airStreak++;
+                        if (airStreak >= 3) {
+                            break;
+                        }
+                        continue;
+                    }
+
+                    airStreak = 0;
+
                     if (isProtected(target)) {
                         continue;
                     }
-
-                    Material type = target.getType();
-                    if (type == Material.AIR || isLiquid(type)) {
-                        continue;
-                    }
-
-                    BlockState snapshot = target.getState();
-                    toRestore.add(snapshot);
 
                     byte data = target.getData();
                     target.setType(Material.AIR);
@@ -109,30 +104,6 @@ public class MiningCollapseListener implements Listener {
                 }
             }
         }
-
-        scheduleRestoration(toRestore);
-    }
-
-    private void scheduleRestoration(final List<BlockState> states) {
-        if (states.isEmpty() || restoreDelayTicks <= 0L) {
-            return;
-        }
-
-        plugin.getServer().getScheduler().runTaskLater(plugin, new Runnable() {
-            @Override
-            public void run() {
-                for (BlockState state : states) {
-                    Block live = state.getBlock();
-                    if (live.getType() == Material.AIR) {
-                        try {
-                            state.update(true, false);
-                        } catch (Exception ignored) {
-                            // If the block cannot be restored, skip silently.
-                        }
-                    }
-                }
-            }
-        }, restoreDelayTicks);
     }
 
     private boolean isProtected(Block block) {
