@@ -40,7 +40,7 @@ public class MiningCollapseListener implements Listener {
     public MiningCollapseListener(ToughTools plugin) {
         this.plugin = plugin;
         this.cooldownMillis = plugin.getConfig().getLong("collapse-cooldown-ms", 2000L);
-        this.safetyManager = new MiningSafetyManager(COLLAPSE_WHITELIST);
+        this.safetyManager = new MiningSafetyManager(plugin, COLLAPSE_WHITELIST);
     }
 
     @EventHandler
@@ -51,7 +51,7 @@ public class MiningCollapseListener implements Listener {
             return;
         }
 
-        boolean triggered = safetyManager.handleShaftAndTunnel(broken);
+        boolean triggered = safetyManager.handleShaftAndTunnel(broken, player);
 
         if (!triggered && COLLAPSE_WHITELIST.contains(broken.getType()) && !isProtected(broken)
                 && !hasSupports(broken)) {
