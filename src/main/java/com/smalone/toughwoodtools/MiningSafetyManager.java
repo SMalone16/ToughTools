@@ -5,12 +5,15 @@ import java.util.Set;
 
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.ChatColor;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.entity.FallingBlock;
+import org.bukkit.entity.Player;
 
 public class MiningSafetyManager {
 
+    private final ToughTools plugin;
     private final Set<Material> collapseWhitelist;
     private static final int REQUIRED_AIR_RUN = 6;
     private static final int MAX_VERTICAL_HEIGHT = 5;
@@ -18,48 +21,66 @@ public class MiningSafetyManager {
     private static final int MAX_HORIZONTAL_DISTANCE = 6;
     private static final int MAX_FALLING_BLOCKS = 90;
 
-    public MiningSafetyManager(Set<Material> collapseWhitelist) {
+    public MiningSafetyManager(ToughTools plugin, Set<Material> collapseWhitelist) {
+        this.plugin = plugin;
         this.collapseWhitelist = collapseWhitelist == null ? EnumSet.noneOf(Material.class) : collapseWhitelist;
     }
 
-    public boolean handleShaftAndTunnel(Block broken) {
+    public boolean handleShaftAndTunnel(Block broken, Player player) {
         Location origin = broken.getLocation();
         World world = broken.getWorld();
 
-        if (triggerVerticalIfNeeded(world, origin)) {
+        if (triggerVerticalIfNeeded(world, origin, player)) {
             return true;
         }
 
-        if (triggerHorizontalIfNeeded(world, origin, Axis.X)) {
+        if (triggerHorizontalIfNeeded(world, origin, Axis.X, player)) {
             return true;
         }
 
-        return triggerHorizontalIfNeeded(world, origin, Axis.Z);
+        return triggerHorizontalIfNeeded(world, origin, Axis.Z, player);
     }
 
-    private boolean triggerVerticalIfNeeded(World world, Location origin) {
+    private boolean triggerVerticalIfNeeded(World world, Location origin, Player player) {
+        if (!isDeepUnderground(origin, 6)) {
+            return false;
+        }
+
         int run = countVerticalAirRun(world, origin, REQUIRED_AIR_RUN);
         if (run < REQUIRED_AIR_RUN) {
             return false;
         }
 
-        triggerVerticalCaveIn(world, origin);
+        int surfaceY = world.getHighestBlockYAt(origin.getBlockX(), origin.getBlockZ());
+        int depthBelowSurface = surfaceY - origin.getBlockY();
+        triggerVerticalCaveIn(world, origin, player, run, depthBelowSurface);
         return true;
     }
 
-    private boolean triggerHorizontalIfNeeded(World world, Location origin, Axis axis) {
+    private boolean triggerHorizontalIfNeeded(World world, Location origin, Axis axis, Player player) {
         HorizontalRun run = countHorizontalAirRun(world, origin, axis, REQUIRED_AIR_RUN);
         if (run.total < REQUIRED_AIR_RUN) {
             return false;
         }
 
         int direction = run.positive >= run.negative ? 1 : -1;
-        if (hasWoodSupport(world, origin, axis, MAX_HORIZONTAL_DISTANCE, direction)) {
+        boolean hasSupport = hasWoodSupport(world, origin, axis, MAX_HORIZONTAL_DISTANCE, direction);
+        if (hasSupport) {
             return false;
         }
 
-        triggerTunnelCaveIn(world, origin, axis, direction, Math.min(run.total, MAX_HORIZONTAL_DISTANCE));
+        triggerTunnelCaveIn(world, origin, axis, direction, Math.min(run.total, MAX_HORIZONTAL_DISTANCE), player, hasSupport);
         return true;
+    }
+
+    private boolean isDeepUnderground(Location loc, int minDepth) {
+        World world = loc.getWorld();
+        if (world == null) {
+            return false;
+        }
+        int surfaceY = world.getHighestBlockYAt(loc.getBlockX(), loc.getBlockZ());
+        int y = loc.getBlockY();
+        return y <= surfaceY - minDepth;
     }
 
     private int countVerticalAirRun(World world, Location origin, int maxLength) {
@@ -139,7 +160,7 @@ public class MiningSafetyManager {
         return false;
     }
 
-    private void triggerVerticalCaveIn(World world, Location center) {
+    private void triggerVerticalCaveIn(World world, Location center, Player player, int airRunLength, int depthBelowSurface) {
         int spawned = 0;
         for (int dx = -1; dx <= 1; dx++) {
             for (int dz = -1; dz <= 1; dz++) {
@@ -159,9 +180,15 @@ public class MiningSafetyManager {
                 }
             }
         }
+
+        if (plugin.isDebugCaveIns() && player != null) {
+            player.sendMessage(ChatColor.GRAY + "[DEBUG] " + ChatColor.YELLOW
+                    + "Vertical cave-in triggered at " + center.getBlockX() + ", " + center.getBlockY() + ", "
+                    + center.getBlockZ() + " (depth=" + depthBelowSurface + ", airRun=" + airRunLength + ")");
+        }
     }
 
-    private void triggerTunnelCaveIn(World world, Location origin, Axis axis, int direction, int airRunLength) {
+    private void triggerTunnelCaveIn(World world, Location origin, Axis axis, int direction, int airRunLength, Player player, boolean hasSupport) {
         int spawned = 0;
         int ox = origin.getBlockX();
         int oy = origin.getBlockY();
@@ -179,6 +206,13 @@ public class MiningSafetyManager {
                     return;
                 }
             }
+        }
+
+        if (plugin.isDebugCaveIns() && player != null) {
+            player.sendMessage(ChatColor.GRAY + "[DEBUG] " + ChatColor.YELLOW
+                    + "Tunnel cave-in triggered along axis " + axis.name()
+                    + " at " + origin.getBlockX() + ", " + origin.getBlockY() + ", " + origin.getBlockZ()
+                    + " (airRun=" + airRunLength + ", supportFound=" + hasSupport + ")");
         }
     }
 

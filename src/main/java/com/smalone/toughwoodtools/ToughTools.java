@@ -17,14 +17,20 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 public class ToughTools extends JavaPlugin implements Listener {
 
+    private boolean debugCaveIns;
+
     @Override
     public void onEnable() {
+        saveDefaultConfig();
         getConfig().addDefault("collapse-height", 6);
         getConfig().addDefault("collapse-restore-delay", 200L);
         getConfig().addDefault("collapse-cooldown-ms", 2000L);
         getConfig().addDefault("small-islands-seed", 12345L);
+        getConfig().addDefault("debug-caveins", true);
         getConfig().options().copyDefaults(true);
         saveConfig();
+
+        debugCaveIns = getConfig().getBoolean("debug-caveins", true);
 
         warnIfSeedMismatch();
 
@@ -169,5 +175,9 @@ public class ToughTools extends JavaPlugin implements Listener {
         }
         PlayerInventory inventory = player.getInventory();
         inventory.setItemInMainHand(replacement);
+    }
+
+    public boolean isDebugCaveIns() {
+        return debugCaveIns;
     }
 }

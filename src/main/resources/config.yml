@@ -1,0 +1,5 @@
+collapse-height: 6
+collapse-restore-delay: 200
+collapse-cooldown-ms: 2000
+small-islands-seed: 12345
+debug-caveins: true
