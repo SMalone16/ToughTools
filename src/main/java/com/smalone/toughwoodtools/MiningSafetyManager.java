@@ -27,6 +27,10 @@ public class MiningSafetyManager {
     }
 
     public boolean handleShaftAndTunnel(Block broken, Player player) {
+        if (!collapseWhitelist.contains(broken.getType())) {
+            return false;
+        }
+
         Location origin = broken.getLocation();
         World world = broken.getWorld();
 
@@ -46,14 +50,14 @@ public class MiningSafetyManager {
             return false;
         }
 
-        int run = countVerticalAirRun(world, origin, REQUIRED_AIR_RUN);
-        if (run < REQUIRED_AIR_RUN) {
+        int airAbove = countVerticalAirAbove(world, origin, REQUIRED_AIR_RUN);
+        if (airAbove < REQUIRED_AIR_RUN) {
             return false;
         }
 
         int surfaceY = world.getHighestBlockYAt(origin.getBlockX(), origin.getBlockZ());
         int depthBelowSurface = surfaceY - origin.getBlockY();
-        triggerVerticalCaveIn(world, origin, player, run, depthBelowSurface);
+        triggerVerticalCaveIn(world, origin, player, airAbove, depthBelowSurface);
         return true;
     }
 
@@ -83,27 +87,18 @@ public class MiningSafetyManager {
         return y <= surfaceY - minDepth;
     }
 
-    private int countVerticalAirRun(World world, Location origin, int maxLength) {
-        int count = 1; // the broken block itself
-
+    private int countVerticalAirAbove(World world, Location origin, int maxLength) {
+        int count = 0;
         int originY = origin.getBlockY();
-        for (int dy = 1; dy <= maxLength; dy++) {
-            int y = originY - dy;
-            if (y < 0) {
-                break;
-            }
-            if (world.getBlockAt(origin.getBlockX(), y, origin.getBlockZ()).getType() != Material.AIR) {
-                break;
-            }
-            count++;
-        }
+        int x = origin.getBlockX();
+        int z = origin.getBlockZ();
 
         for (int dy = 1; dy <= maxLength; dy++) {
             int y = originY + dy;
             if (y >= world.getMaxHeight()) {
                 break;
             }
-            if (world.getBlockAt(origin.getBlockX(), y, origin.getBlockZ()).getType() != Material.AIR) {
+            if (world.getBlockAt(x, y, z).getType() != Material.AIR) {
                 break;
             }
             count++;

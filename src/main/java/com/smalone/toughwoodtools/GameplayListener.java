@@ -30,7 +30,7 @@ public class GameplayListener implements Listener {
     private final Random random = new Random();
     private final Set<String> platformBlocks = new HashSet<String>();
     private Location spectatorCenter;
-    private static final int SPECTATOR_PLATFORM_Y = 120;
+    private static final int SPECTATOR_PLATFORM_Y = 110;
     private static final int SPECTATOR_PLATFORM_HALF_SIZE = 25; // results in 50x50 footprint
     private static final int SPECTATOR_PLATFORM_HEIGHT = 3;
 
@@ -76,6 +76,7 @@ public class GameplayListener implements Listener {
         Location platform = ensureSpectatorPlatform(world);
         if (platform != null) {
             event.setRespawnLocation(platform);
+            giveSpectatorKit(event.getPlayer());
         }
     }
 
@@ -169,6 +170,22 @@ public class GameplayListener implements Listener {
         inventory.addItem(new ItemStack(Material.BED, 1));
     }
 
+    private void giveSpectatorKit(Player player) {
+        if (player == null) {
+            return;
+        }
+
+        player.getInventory().clear();
+        player.getInventory().addItem(new ItemStack(Material.BOW, 1));
+        player.getInventory().addItem(new ItemStack(Material.ARROW, 64));
+
+        try {
+            player.getInventory().setItemInOffHand(new ItemStack(Material.SHIELD, 1));
+        } catch (NoSuchMethodError ignored) {
+            // Off-hand may not be available on some server versions.
+        }
+    }
+
     private Location ensureSpectatorPlatform(World world) {
         if (spectatorCenter != null) {
             return spectatorCenter.clone();
@@ -184,11 +201,29 @@ public class GameplayListener implements Listener {
         int startZ = centerZ - SPECTATOR_PLATFORM_HALF_SIZE;
         int endZ = centerZ + SPECTATOR_PLATFORM_HALF_SIZE - 1;
 
-        for (int dy = 0; dy < SPECTATOR_PLATFORM_HEIGHT; dy++) {
+        int yFloor = yBase;
+        int yRoof = yBase + SPECTATOR_PLATFORM_HEIGHT - 1;
+
+        for (int x = startX; x <= endX; x++) {
+            for (int z = startZ; z <= endZ; z++) {
+                setGlass(world, x, yFloor, z);
+            }
+        }
+
+        for (int y = yFloor; y <= yRoof; y++) {
             for (int x = startX; x <= endX; x++) {
-                for (int z = startZ; z <= endZ; z++) {
-                    setGlass(world, x, yBase + dy, z);
-                }
+                setGlass(world, x, y, startZ);
+                setGlass(world, x, y, endZ);
+            }
+            for (int z = startZ; z <= endZ; z++) {
+                setGlass(world, startX, y, z);
+                setGlass(world, endX, y, z);
+            }
+        }
+
+        for (int x = startX; x <= endX; x++) {
+            for (int z = startZ; z <= endZ; z++) {
+                setGlass(world, x, yRoof, z);
             }
         }
 
