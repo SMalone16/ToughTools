@@ -32,7 +32,7 @@ public class GameplayListener implements Listener {
     private Location spectatorCenter;
     private static final int SPECTATOR_PLATFORM_Y = 110;
     private static final int SPECTATOR_PLATFORM_HALF_SIZE = 25; // results in 50x50 footprint
-    private static final int SPECTATOR_PLATFORM_HEIGHT = 3;
+    private static final int SPECTATOR_PLATFORM_HEIGHT = 10;
 
     public GameplayListener(ToughTools plugin) {
         this.plugin = plugin;
@@ -226,12 +226,14 @@ public class GameplayListener implements Listener {
 
         int yRoof = yFloor + SPECTATOR_PLATFORM_HEIGHT - 1;
 
+        // Build floor
         for (int x = startX; x <= endX; x++) {
             for (int z = startZ; z <= endZ; z++) {
                 setGlass(world, x, yFloor, z);
             }
         }
 
+        // Build walls
         for (int y = yFloor; y <= yRoof; y++) {
             for (int x = startX; x <= endX; x++) {
                 setGlass(world, x, y, startZ);
@@ -243,6 +245,7 @@ public class GameplayListener implements Listener {
             }
         }
 
+        // Build roof
         for (int x = startX; x <= endX; x++) {
             for (int z = startZ; z <= endZ; z++) {
                 setGlass(world, x, yRoof, z);
@@ -250,6 +253,10 @@ public class GameplayListener implements Listener {
         }
 
         spectatorCenter = new Location(world, centerX + 0.5D, yFloor + 1, centerZ + 0.5D);
+        Block interior = world.getBlockAt(centerX, yFloor + 1, centerZ);
+        if (interior.getType() != Material.AIR) {
+            interior.setType(Material.AIR);
+        }
         return spectatorCenter.clone();
     }
 
