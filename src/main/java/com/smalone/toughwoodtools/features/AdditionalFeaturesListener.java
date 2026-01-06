@@ -215,7 +215,7 @@ public class AdditionalFeaturesListener implements Listener {
         }
 
         final FairyState state = new FairyState();
-        state.hadAllowFlight = player.getAllowFlight();
+        state.hadAllowFlight = existing != null ? existing.hadAllowFlight : player.getAllowFlight();
         fairyStates.put(uuid, state);
 
         player.setAllowFlight(true);
@@ -256,7 +256,6 @@ public class AdditionalFeaturesListener implements Listener {
         if (fairyStates.get(uuid) != state) {
             return;
         }
-        cancelFairyTasks(state);
         fairyStates.remove(uuid);
         if (player == null || !player.isOnline()) {
             return;
@@ -346,10 +345,7 @@ public class AdditionalFeaturesListener implements Listener {
                 new ItemStack(Material.GLASS, 12),
                 new ItemStack(Material.CHEST, 1),
                 new ItemStack(Material.SADDLE, 1),
-                new ItemStack(Material.BED, 1),
-                new ItemStack(Material.WOOD_DOOR, 1),
-                new ItemStack(Material.WORKBENCH, 1),
-                new ItemStack(Material.FURNACE, 1)
+                new ItemStack(Material.BED, 1)
         );
 
         if (leftovers != null && !leftovers.isEmpty()) {
