@@ -350,6 +350,10 @@ public class AdditionalFeaturesListener implements Listener {
 
             @Override
             public void run() {
+                if (fairyStates.get(uuid) != state) {
+                    cancel();
+                    return;
+                }
                 if (!player.isOnline()) {
                     cancel();
                     return;
@@ -375,6 +379,14 @@ public class AdditionalFeaturesListener implements Listener {
     private void endFairyMode(Player player, UUID uuid, FairyState state) {
         if (fairyStates.get(uuid) != state) {
             return;
+        }
+        if (state.dropTask != null) {
+            state.dropTask.cancel();
+            state.dropTask = null;
+        }
+        if (state.endTask != null) {
+            state.endTask.cancel();
+            state.endTask = null;
         }
         fairyStates.remove(uuid);
         if (player == null || !player.isOnline()) {
