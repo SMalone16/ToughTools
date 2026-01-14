@@ -1,14 +1,18 @@
 package com.smalone.toughwoodtools.features;
 
+import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Random;
+import java.util.Set;
 import java.util.UUID;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
+import org.bukkit.attribute.Attribute;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Creature;
 import org.bukkit.entity.Enderman;
@@ -16,12 +20,16 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Horse;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Villager;
+import org.bukkit.entity.Zombie;
+import org.bukkit.enchantments.Enchantment;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.bukkit.event.entity.CreatureSpawnEvent.SpawnReason;
+import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.player.AsyncPlayerChatEvent;
@@ -29,7 +37,11 @@ import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
+import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.metadata.FixedMetadataValue;
 import org.bukkit.plugin.Plugin;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.Vector;
@@ -39,14 +51,63 @@ public class AdditionalFeaturesListener implements Listener {
     private static final double FIST_DIAMOND_CHANCE = 0.25D;
     private static final double CHICKEN_EXTRA_SPAWN_CHANCE = 0.30D;
     private static final double ENDERMAN_EXTRA_SPAWN_CHANCE = 0.35D;
-    private static final long FAIRY_DURATION_TICKS = 200L;
+    private static final long FAIRY_DURATION_TICKS = 400L;
     private static final long FAIRY_DROP_PERIOD_TICKS = 20L;
+    private static final int FAIRY_DROP_COUNT = 20;
     private static final double TORCH_AGGRO_RADIUS = 16.0D;
     private static final long TORCH_AGGRO_PERIOD_TICKS = 20L;
+    private static final long HAUNTED_VILLAGE_PERIOD_TICKS = 200L;
+    private static final long HAUNTED_VILLAGE_COOLDOWN_MS = 60000L;
+    private static final double HAUNTED_VILLAGE_RADIUS = 15.0D;
+    private static final long NO_FALL_AFTER_FAIRY_MS = 5000L;
+    private static final String ENDERMAN_BUFFED_META = "toughtools_endermanBuffed";
+
+    private static final EnumSet<EntityType> WOODEN_WARRIOR_TARGETS = EnumSet.of(
+            EntityType.ZOMBIE,
+            EntityType.SKELETON,
+            EntityType.CREEPER,
+            EntityType.SPIDER,
+            EntityType.CAVE_SPIDER,
+            EntityType.ENDERMAN,
+            EntityType.WITCH,
+            EntityType.SLIME,
+            EntityType.MAGMA_CUBE,
+            EntityType.BLAZE,
+            EntityType.GHAST,
+            EntityType.PIG_ZOMBIE,
+            EntityType.SILVERFISH,
+            EntityType.ENDERMITE,
+            EntityType.GUARDIAN,
+            EntityType.ELDER_GUARDIAN,
+            EntityType.SHULKER,
+            EntityType.VEX,
+            EntityType.VINDICATOR,
+            EntityType.EVOKER,
+            EntityType.HUSK,
+            EntityType.STRAY
+    );
+
+    private static final PotionEffectType[] WOODEN_WARRIOR_EFFECTS = new PotionEffectType[] {
+            PotionEffectType.SPEED,
+            PotionEffectType.REGENERATION,
+            PotionEffectType.INCREASE_DAMAGE,
+            PotionEffectType.DAMAGE_RESISTANCE,
+            PotionEffectType.FIRE_RESISTANCE,
+            PotionEffectType.JUMP,
+            PotionEffectType.INVISIBILITY,
+            PotionEffectType.ABSORPTION,
+            PotionEffectType.POISON,
+            PotionEffectType.WEAKNESS,
+            PotionEffectType.SLOW,
+            PotionEffectType.CONFUSION,
+            PotionEffectType.BLINDNESS
+    };
 
     private final Plugin plugin;
     private final Random random = new Random();
     private final Map<UUID, FairyState> fairyStates = new HashMap<UUID, FairyState>();
+    private final Map<UUID, Long> fairyNoFallUntil = new HashMap<UUID, Long>();
+    private final Map<UUID, Long> hauntedVillageCooldowns = new HashMap<UUID, Long>();
 
     public AdditionalFeaturesListener(Plugin plugin) {
         this.plugin = plugin;
@@ -59,6 +120,12 @@ public class AdditionalFeaturesListener implements Listener {
                 tickTorchAggro();
             }
         }, TORCH_AGGRO_PERIOD_TICKS, TORCH_AGGRO_PERIOD_TICKS);
+        plugin.getServer().getScheduler().runTaskTimer(plugin, new Runnable() {
+            @Override
+            public void run() {
+                tickHauntedVillages();
+            }
+        }, HAUNTED_VILLAGE_PERIOD_TICKS, HAUNTED_VILLAGE_PERIOD_TICKS);
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -108,29 +175,52 @@ public class AdditionalFeaturesListener implements Listener {
 
     @EventHandler
     public void onEntityDeath(EntityDeathEvent event) {
-        if (event.getEntityType() != EntityType.CHICKEN) {
+        EntityType type = event.getEntityType();
+        Player killer = event.getEntity().getKiller();
+
+        if (type == EntityType.CHICKEN) {
+            if (killer == null) {
+                return;
+            }
+
+            PlayerInventory inv = killer.getInventory();
+            if (!hasRawChicken(inv) || hasSword(inv)) {
+                return;
+            }
+
+            Material[] swords = new Material[] { Material.STONE_SWORD, Material.IRON_SWORD, Material.GOLD_SWORD,
+                    Material.DIAMOND_SWORD };
+            Material chosen = swords[random.nextInt(swords.length)];
+            event.getDrops().add(new ItemStack(chosen, 1));
             return;
         }
 
-        Player killer = event.getEntity().getKiller();
+        if (type == EntityType.ENDERMAN) {
+            addEndermanDrops(event);
+        }
+
         if (killer == null) {
             return;
         }
 
-        PlayerInventory inv = killer.getInventory();
-        if (!hasRawChicken(inv) || hasSword(inv)) {
+        ItemStack weapon = killer.getInventory().getItemInMainHand();
+        if (weapon == null || weapon.getType() != Material.WOOD_SWORD) {
             return;
         }
 
-        Material[] swords = new Material[] { Material.STONE_SWORD, Material.IRON_SWORD, Material.GOLD_SWORD, Material.DIAMOND_SWORD };
-        Material chosen = swords[random.nextInt(swords.length)];
-        event.getDrops().add(new ItemStack(chosen, 1));
+        if (WOODEN_WARRIOR_TARGETS.contains(type)) {
+            applyWoodenWarriorEffect(killer);
+        }
     }
 
     @EventHandler
     public void onCreatureSpawn(CreatureSpawnEvent event) {
         EntityType type = event.getEntityType();
         SpawnReason reason = event.getSpawnReason();
+        if (type == EntityType.ENDERMAN && event.getEntity() instanceof Enderman) {
+            applyEndermanBuff((Enderman) event.getEntity());
+        }
+
         if (reason == SpawnReason.CUSTOM) {
             return;
         }
@@ -182,6 +272,36 @@ public class AdditionalFeaturesListener implements Listener {
                     block.setData(data);
                 }
             }
+        }
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    public void onHorseHit(EntityDamageByEntityEvent event) {
+        if (!(event.getDamager() instanceof Player)) {
+            return;
+        }
+        if (!(event.getEntity() instanceof Horse)) {
+            return;
+        }
+
+        Player player = (Player) event.getDamager();
+        double newHealth = Math.max(0.0D, player.getHealth() - 3.0D);
+        player.setHealth(newHealth);
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    public void onFairyFallDamage(EntityDamageEvent event) {
+        if (!(event.getEntity() instanceof Player)) {
+            return;
+        }
+        if (event.getCause() != EntityDamageEvent.DamageCause.FALL) {
+            return;
+        }
+
+        Player player = (Player) event.getEntity();
+        Long until = fairyNoFallUntil.get(player.getUniqueId());
+        if (until != null && System.currentTimeMillis() <= until) {
+            event.setCancelled(true);
         }
     }
 
@@ -238,7 +358,7 @@ public class AdditionalFeaturesListener implements Listener {
                 player.getWorld().dropItemNaturally(player.getLocation(),
                         new ItemStack(Material.GLOWSTONE_DUST, 1));
                 drops++;
-                if (drops >= 10) {
+                if (drops >= FAIRY_DROP_COUNT) {
                     cancel();
                 }
             }
@@ -267,6 +387,7 @@ public class AdditionalFeaturesListener implements Listener {
         if (!state.hadAllowFlight) {
             player.setAllowFlight(false);
         }
+        fairyNoFallUntil.put(uuid, System.currentTimeMillis() + NO_FALL_AFTER_FAIRY_MS);
     }
 
     private void cancelFairyTasks(FairyState state) {
@@ -413,6 +534,131 @@ public class AdditionalFeaturesListener implements Listener {
 
     private boolean isTorch(ItemStack item) {
         return item != null && item.getType() == Material.TORCH;
+    }
+
+    private void tickHauntedVillages() {
+        long now = System.currentTimeMillis();
+        Set<UUID> triggeredWorlds = new HashSet<UUID>();
+
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            if (player == null) {
+                continue;
+            }
+
+            World world = player.getWorld();
+            if (world == null) {
+                continue;
+            }
+
+            UUID worldId = world.getUID();
+            if (triggeredWorlds.contains(worldId)) {
+                continue;
+            }
+
+            if (!isHauntedCooldownReady(worldId, now)) {
+                continue;
+            }
+
+            boolean villagerNearby = false;
+            for (Entity entity : player.getNearbyEntities(HAUNTED_VILLAGE_RADIUS, HAUNTED_VILLAGE_RADIUS,
+                    HAUNTED_VILLAGE_RADIUS)) {
+                if (entity instanceof Villager) {
+                    villagerNearby = true;
+                    break;
+                }
+            }
+
+            if (villagerNearby) {
+                hauntWorld(world, now);
+                triggeredWorlds.add(worldId);
+            }
+        }
+    }
+
+    private boolean isHauntedCooldownReady(UUID worldId, long now) {
+        Long last = hauntedVillageCooldowns.get(worldId);
+        return last == null || now - last >= HAUNTED_VILLAGE_COOLDOWN_MS;
+    }
+
+    private void hauntWorld(World world, long now) {
+        if (world == null) {
+            return;
+        }
+
+        world.setTime(14000L);
+        for (Entity entity : world.getEntities()) {
+            if (!(entity instanceof Villager)) {
+                continue;
+            }
+
+            Location loc = entity.getLocation();
+            entity.remove();
+            Entity spawned = world.spawnEntity(loc, EntityType.ZOMBIE);
+            if (spawned instanceof Zombie) {
+                ((Zombie) spawned).setBaby(false);
+            }
+        }
+
+        hauntedVillageCooldowns.put(world.getUID(), now);
+    }
+
+    private void applyWoodenWarriorEffect(Player player) {
+        if (player == null) {
+            return;
+        }
+
+        PotionEffectType effectType = WOODEN_WARRIOR_EFFECTS[random.nextInt(WOODEN_WARRIOR_EFFECTS.length)];
+        int durationSeconds = 5 + random.nextInt(6);
+        int amplifier = random.nextInt(2);
+        player.addPotionEffect(new PotionEffect(effectType, durationSeconds * 20, amplifier), true);
+    }
+
+    private void applyEndermanBuff(Enderman enderman) {
+        if (enderman == null || enderman.hasMetadata(ENDERMAN_BUFFED_META)) {
+            return;
+        }
+
+        if (enderman.getAttribute(Attribute.GENERIC_MAX_HEALTH) != null) {
+            double base = enderman.getAttribute(Attribute.GENERIC_MAX_HEALTH).getBaseValue();
+            enderman.getAttribute(Attribute.GENERIC_MAX_HEALTH).setBaseValue(base * 2.0D);
+            enderman.setHealth(enderman.getAttribute(Attribute.GENERIC_MAX_HEALTH).getBaseValue());
+        }
+        if (enderman.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE) != null) {
+            double base = enderman.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE).getBaseValue();
+            enderman.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE).setBaseValue(base * 2.0D);
+        }
+
+        enderman.setMetadata(ENDERMAN_BUFFED_META, new FixedMetadataValue(plugin, true));
+    }
+
+    private void addEndermanDrops(EntityDeathEvent event) {
+        ItemStack sword = new ItemStack(Material.DIAMOND_SWORD, 1);
+        sword.addUnsafeEnchantment(Enchantment.DAMAGE_ALL, 3);
+        sword.addUnsafeEnchantment(Enchantment.DURABILITY, 2);
+        sword.addUnsafeEnchantment(Enchantment.FIRE_ASPECT, 1);
+        ItemMeta meta = sword.getItemMeta();
+        if (meta != null) {
+            meta.setDisplayName("Voidcleaver");
+            sword.setItemMeta(meta);
+        }
+        event.getDrops().add(sword);
+
+        ItemStack helmet = new ItemStack(Material.DIAMOND_HELMET, 1);
+        ItemStack chestplate = new ItemStack(Material.DIAMOND_CHESTPLATE, 1);
+        ItemStack leggings = new ItemStack(Material.DIAMOND_LEGGINGS, 1);
+        ItemStack boots = new ItemStack(Material.DIAMOND_BOOTS, 1);
+        helmet.addUnsafeEnchantment(Enchantment.PROTECTION_ENVIRONMENTAL, 2);
+        helmet.addUnsafeEnchantment(Enchantment.DURABILITY, 1);
+        chestplate.addUnsafeEnchantment(Enchantment.PROTECTION_ENVIRONMENTAL, 2);
+        chestplate.addUnsafeEnchantment(Enchantment.DURABILITY, 1);
+        leggings.addUnsafeEnchantment(Enchantment.PROTECTION_ENVIRONMENTAL, 2);
+        leggings.addUnsafeEnchantment(Enchantment.DURABILITY, 1);
+        boots.addUnsafeEnchantment(Enchantment.PROTECTION_ENVIRONMENTAL, 2);
+        boots.addUnsafeEnchantment(Enchantment.DURABILITY, 1);
+        event.getDrops().add(helmet);
+        event.getDrops().add(chestplate);
+        event.getDrops().add(leggings);
+        event.getDrops().add(boots);
     }
 
     private static class FairyState {
