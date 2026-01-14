@@ -60,6 +60,7 @@ public class AdditionalFeaturesListener implements Listener {
     private static final long HAUNTED_VILLAGE_COOLDOWN_MS = 60000L;
     private static final double HAUNTED_VILLAGE_RADIUS = 15.0D;
     private static final long NO_FALL_AFTER_FAIRY_MS = 5000L;
+    private static final double SWORD_GUARD_MULTIPLIER = 0.70D;
     private static final String ENDERMAN_BUFFED_META = "toughtools_endermanBuffed";
 
     private static final EnumSet<EntityType> WOODEN_WARRIOR_TARGETS = EnumSet.of(
@@ -275,6 +276,32 @@ public class AdditionalFeaturesListener implements Listener {
         }
     }
 
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onSwordGuardDamage(EntityDamageEvent event) {
+        if (!(event.getEntity() instanceof Player)) {
+            return;
+        }
+
+        if (!(event instanceof EntityDamageByEntityEvent)) {
+            return;
+        }
+
+        EntityDamageEvent.DamageCause cause = event.getCause();
+        if (cause != EntityDamageEvent.DamageCause.ENTITY_ATTACK
+                && cause != EntityDamageEvent.DamageCause.PROJECTILE) {
+            return;
+        }
+
+        Player player = (Player) event.getEntity();
+        ItemStack mainHand = player.getInventory().getItemInMainHand();
+        ItemStack offHand = player.getInventory().getItemInOffHand();
+        if (!isSwordItem(mainHand) && !isSwordItem(offHand)) {
+            return;
+        }
+
+        event.setDamage(event.getDamage() * SWORD_GUARD_MULTIPLIER);
+    }
+
     @EventHandler(ignoreCancelled = true)
     public void onHorseHit(EntityDamageByEntityEvent event) {
         if (!(event.getDamager() instanceof Player)) {
@@ -438,6 +465,15 @@ public class AdditionalFeaturesListener implements Listener {
             }
         }
         return false;
+    }
+
+    private boolean isSwordItem(ItemStack item) {
+        if (item == null) {
+            return false;
+        }
+        Material type = item.getType();
+        return type == Material.WOOD_SWORD || type == Material.STONE_SWORD || type == Material.IRON_SWORD
+                || type == Material.GOLD_SWORD || type == Material.DIAMOND_SWORD;
     }
 
     private void spawnExtraCreature(Entity original, EntityType type) {
